@@ -1,179 +1,167 @@
 #!/usr/bin/env python3
 """Transcribe the curriculum and a produced schedule into a Pol instance.
 
-This is a TRANSCRIBER, not a checker, and the distinction is the whole basis of
-trusting the audit. It decides exactly one thing:
+A TRANSCRIBER, not a checker, and the distinction is the basis of trusting the
+audit. It decides exactly one thing: `b-nth`, which hour of that subject a
+lesson is, by position in the week. Everything else is a literal copy.
 
-    b-nth — which hour of that subject a lesson is, by position in week order.
+Even that one decision is checked rather than trusted — `hours-not-doubled` in
+timetable.claims fails if two lessons get the same ordinal, and
+`curriculum-delivered` / `nothing-extra` force the numbering to be a bijection
+onto the programme. A transcriber that miscounted is caught by the file it is
+feeding.
 
-Everything else is a literal copy: a room is a room, a booking is a booking.
-And even that one decision is checked rather than trusted — `hours-not-doubled`
-in timetable.claims fails if two lessons are given the same ordinal, and
-`curriculum-delivered` / `nothing-extra` between them force the numbering to be
-a bijection onto the programme. A transcriber that miscounted would be caught
-by the file it is feeding.
-
-    ./to_pol.py schedule.json -o build/timetable.pol
+    ./to_pol.py schedule.json -o timetable.pol
 """
 import argparse
 import json
 import os
 import sys
 
-import yaml
+from school import School, bucket
 
-# Members of the enumerated types the library declares: an entity may not
-# redeclare them (§7 — names are global across the loaded universe).
-RESERVED = {"plain", "computers", "gym", "vacant",
-            "school", "slot", "room", "teacher", "subject", "group", "demand",
-            "booking", "ordinal", "qualification", "blackout", "facility",
-            "size-t", "day-t", "period-t", "id-t"}
+# Members of the enumerated types timetable.lib.pol declares. Names are global
+# across the loaded universe and may not be redeclared (Pol §7), so an entity
+# in curriculum.yaml may not take one of these.
+RESERVED = {"plain", "computers", "gym", "vacant", "school", "slot", "room",
+            "teacher", "subject", "group", "demand", "booking", "ordinal",
+            "qualification", "blackout", "facility", "size-t", "day-t",
+            "period-t", "id-t"}
 
 
 class Names:
-    """Every entity name emitted, checked for the collisions Pol forbids."""
+    """Every entity name emitted, kept distinct — as Pol requires."""
 
     def __init__(self):
         self.seen = set()
 
-    def fresh(self, base):
+    def __call__(self, base):
         if base in RESERVED:
-            sys.exit(f"'{base}' is a reserved name in timetable.lib.pol — "
-                     f"rename it in curriculum.yaml")
+            sys.exit(f"'{base}' is a reserved name — rename it in curriculum.yaml")
         name, n = base, 1
-        while name in self.seen:                 # a tampered file may repeat one
+        while name in self.seen:            # a damaged schedule may repeat one
             n += 1
             name = f"{base}-again{n}"
         self.seen.add(name)
         return name
 
 
+def clause(kind, name, **slots):
+    """(kind name (arrow value) …) — the one shape an instance is made of."""
+    body = "".join(f" ({k.replace('_', '-')} {v})" for k, v in slots.items())
+    return f"  ({kind} {name}{body})"
+
+
+def week(S, fresh):
+    yield f"  (day-t {' '.join(S.days)})"
+    yield f"  (period-t {' '.join(S.periods)})"
+    for i, s in enumerate(S.slots):
+        yield clause("slot", fresh(s), next=S.slots[i + 1] if i + 1 < len(S.slots) else "vacant",
+                     day=S.day(s), period=S.period(s))
+
+
+def capacity(S, fresh):
+    """Seat counts as a ladder of classes: Pol compares by walking, not by <."""
+    if len(S.sizes) > 4:
+        sys.exit(f"{len(S.sizes)} distinct capacities, but `fits` in "
+                 f"timetable.lib.pol walks a ladder of 4 — extend the form or "
+                 f"bucket the capacities")
+    for i, n in enumerate(S.sizes):
+        yield clause("size-t", fresh(S.klass(n)),
+                     bigger=S.klass(S.sizes[i + 1]) if i + 1 < len(S.sizes) else "vacant")
+
+
+def estate(S, fresh):
+    for r, spec in S.rooms.items():
+        yield clause("room", fresh(r), provides=spec["facility"], holds=S.klass(spec["seats"]))
+    for t in S.teachers:
+        yield clause("teacher", fresh(t))
+    for s, spec in S.subjects.items():
+        yield clause("subject", fresh(s), needs=spec["needs"])
+    for g, spec in S.groups.items():
+        yield clause("group", fresh(g), size=S.klass(spec["size"]))
+
+
+def permissions(S, fresh):
+    for t, spec in S.teachers.items():
+        for s in spec["teaches"]:
+            yield clause("qualification", fresh(f"may-{t}-{s}"), q_teacher=t, q_subj=s)
+        for u in spec.get("unavailable", []):
+            yield clause("blackout", fresh(f"not-{t}-{u}"), x_teacher=t, x_slot=u)
+
+
+def curriculum(S, fresh, ordinals):
+    yield f"  (ordinal {' '.join(ordinals)})"
+    for h in S.demand:
+        yield clause("demand", fresh(f"owed-{h.group}-{h.subject}-{h.nth}"),
+                     d_group=h.group, d_subj=h.subject, d_nth=f"hour-{h.nth}")
+
+
+def timetable(S, fresh, lessons):
+    """The lessons, each carrying WHICH hour of its subject it is.
+
+    That ordinal is the only thing this file works out, and it is worked out by
+    position in the week — the schedule is sorted, never interpreted.
+    """
+    runs = bucket(((b["group"], b["subject"]), b) for b in lessons)
+    ids, rows = [], []
+    for run in runs.values():
+        for nth, b in enumerate(sorted(run, key=lambda b: S.index[b["slot"]]), 1):
+            at = f"{b['group']}-{b['subject']}-{b['slot']}"
+            ids.append(fresh(f"id-{at}"))
+            rows.append(clause("booking", fresh(at),
+                               b_group=b["group"], b_subj=b["subject"],
+                               b_teacher=b["teacher"], b_room=b["room"],
+                               b_slot=b["slot"], b_nth=f"hour-{nth}", b_id=ids[-1]))
+    yield f"  (id-t {' '.join(ids)})"
+    yield from rows
+
+
 def main():
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("schedule")
     ap.add_argument("--curriculum", default="curriculum.yaml")
     ap.add_argument("-o", "--out", default="timetable.pol")
     ap.add_argument("--lib", default="timetable.lib.pol")
     args = ap.parse_args()
 
-    cur = yaml.safe_load(open(args.curriculum))
+    S = School(args.curriculum)
     sched = json.load(open(args.schedule))
-    N = Names()
+    lessons = sched["lessons"]
+    fresh = Names()
 
-    days, periods = cur["week"]["days"], cur["week"]["periods"]
-    slots = [f"{d}-{p}" for d in days for p in periods]
-    order = {s: i for i, s in enumerate(slots)}
+    # Enough ordinals to name every hour — demanded or delivered, since an
+    # over-delivering schedule must be nameable in order to be reported.
+    taught = bucket(((b["group"], b["subject"]), b) for b in lessons)
+    top = max([1] + [h.nth for h in S.demand] + [len(v) for v in taught.values()])
+    ordinals = [f"hour-{k}" for k in range(1, top + 1)]
 
-    # ── the capacity ladder: distinct seat counts, smallest first ────────────
-    sizes = sorted({r["seats"] for r in cur["rooms"].values()} |
-                   {g["size"] for g in cur["groups"].values()})
-    if len(sizes) > 4:
-        sys.exit(f"{len(sizes)} distinct capacities, but `fits` in "
-                 f"timetable.lib.pol walks a ladder of 4 — extend the form "
-                 f"(one disjunct per class) or bucket the capacities")
-    size_of = {n: f"seats-{n}" for n in sizes}
+    sections = [("the week", week(S, fresh)),
+                ("capacity, as a small named scale", capacity(S, fresh)),
+                ("the estate, the staff, the syllabus", estate(S, fresh)),
+                ("who may teach what, and who is away when", permissions(S, fresh)),
+                ("THE CURRICULUM: one entity per hour the programme demands",
+                 curriculum(S, fresh, ordinals)),
+                ("THE TIMETABLE: one entity per lesson the solver placed",
+                 timetable(S, fresh, lessons))]
 
-    def klass(n):
-        """The smallest class that seats n — a group's own size class."""
-        return size_of[min(s for s in sizes if s >= n)]
-
-    L = []
-    add = L.append
-    add(f'; GENERATED by to_pol.py from {os.path.basename(args.curriculum)} and '
-        f'{os.path.basename(args.schedule)} — do not edit.')
-    add(f'; The schedule was produced by: {sched.get("produced_by", "?")} '
-        f'({sched.get("mode", "?")}).')
-    add(f'(load "{args.lib}")')
-    add("")
-    add("(instance week school")
-    add("  ; ── the week ──")
-    add(f"  (day-t {' '.join(days)})")
-    add(f"  (period-t {' '.join(periods)})")
-    for i, s in enumerate(slots):
-        nxt = slots[i + 1] if i + 1 < len(slots) else "vacant"
-        d, p = s.rsplit("-", 1)
-        add(f"  (slot {N.fresh(s)} (next {nxt}) (day {d}) (period {p}))")
-
-    add("  ; ── capacity, as a small named scale ──")
-    for i, n in enumerate(sizes):
-        nxt = size_of[sizes[i + 1]] if i + 1 < len(sizes) else "vacant"
-        add(f"  (size-t {N.fresh(size_of[n])} (bigger {nxt}))")
-
-    add("  ; ── the estate ──")
-    for r, spec in cur["rooms"].items():
-        add(f"  (room {N.fresh(r)} (provides {spec['facility']}) "
-            f"(holds {size_of[spec['seats']]}))")
-
-    add("  ; ── staff, syllabus, groups ──")
-    for t in cur["teachers"]:
-        add(f"  (teacher {N.fresh(t)})")
-    for s, spec in cur["subjects"].items():
-        add(f"  (subject {N.fresh(s)} (needs {spec['needs']}))")
-    for g, spec in cur["groups"].items():
-        add(f"  (group {N.fresh(g)} (size {klass(spec['size'])}))")
-
-    add("  ; ── who may teach what, and who is not available when ──")
-    for t, spec in cur["teachers"].items():
-        for s in spec["teaches"]:
-            add(f"  (qualification {N.fresh(f'may-{t}-{s}')} "
-                f"(q-teacher {t}) (q-subj {s}))")
-    for t, spec in cur["teachers"].items():
-        for u in spec.get("unavailable", []):
-            add(f"  (blackout {N.fresh(f'not-{t}-{u}')} "
-                f"(x-teacher {t}) (x-slot {u}))")
-
-    add("  ; ── counting without numbers: one ordinal per possible hour ──")
-    top = max(h for prog in cur["programme"].values() for h in prog.values())
-    top = max(top, max((sum(1 for b in sched["lessons"]
-                            if b["group"] == g and b["subject"] == s)
-                        for g in cur["groups"] for s in cur["subjects"]), default=0))
-    ordinal = {k: f"hour-{k}" for k in range(1, top + 1)}
-    add(f"  (ordinal {' '.join(ordinal[k] for k in range(1, top + 1))})")
-
-    add("  ; ── THE CURRICULUM: one entity per hour the programme demands ──")
-    for g, prog in cur["programme"].items():
-        for s, hours in prog.items():
-            for k in range(1, hours + 1):
-                add(f"  (demand {N.fresh(f'owed-{g}-{s}-{k}')} "
-                    f"(d-group {g}) (d-subj {s}) (d-nth {ordinal[k]}))")
-
-    add("  ; ── THE TIMETABLE: one entity per lesson the solver placed ──")
-    # The only decision in this file: rank each lesson within its group's run
-    # of that subject, in week order.
-    lessons = sorted(sched["lessons"],
-                     key=lambda b: (b["group"], b["subject"],
-                                    order.get(f"{b['day']}-{b['period']}", 99)))
-    nth, ids, rows = {}, [], []
-    for b in lessons:
-        key = (b["group"], b["subject"])
-        nth[key] = nth.get(key, 0) + 1
-        if nth[key] > top:
-            sys.exit(f"{b['group']} has more hours of {b['subject']} than any "
-                     f"ordinal names — the schedule over-delivers beyond the scale")
-        at = f"{b['day']}-{b['period']}"
-        name = N.fresh(f"{b['group']}-{b['subject']}-{at}")
-        ids.append(N.fresh(f"id-{name}"))
-        rows.append(f"  (booking {name} (b-group {b['group']}) (b-subj {b['subject']}) "
-                    f"(b-teacher {b['teacher']}) (b-room {b['room']}) (b-slot {at}) "
-                    f"(b-nth {ordinal[nth[key]]}) (b-id {ids[-1]}))")
-    add(f"  (id-t {' '.join(ids)})")
-    L.extend(rows)
-    add("  )")
-    add("")
-    add("(use school)")
-    add("(initial week)")
-    add("")
-    add("; Where the curriculum runs out — declared in the library, invoked here")
-    add("; because a loaded file may not carry a transition of its own.")
-    add("(silence-windows a b c)")
-    add("(silence-doubling a b)")
+    body = [f"; GENERATED by to_pol.py from {os.path.basename(args.curriculum)} "
+            f"and {os.path.basename(args.schedule)} — do not edit.",
+            f"; The schedule was produced by: {sched.get('produced_by', '?')} "
+            f"({sched.get('mode', '?')}).",
+            f'(load "{args.lib}")', "", "(instance week school"]
+    for title, lines in sections:
+        body += [f"  ; ── {title} ──", *lines]
+    body += ["  )", "", "(use school)", "(initial week)", "",
+             "; Where the curriculum runs out. Declared in the library, invoked here",
+             "; because a loaded file may not carry a transition of its own.",
+             "(silence-windows a b c)", "(silence-doubling a b)"]
 
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     with open(args.out, "w") as f:
-        f.write("\n".join(L) + "\n")
-    print(f"transcribed {len(lessons)} lessons and "
-          f"{sum(sum(p.values()) for p in cur['programme'].values())} demanded hours "
-          f"-> {args.out}", file=sys.stderr)
+        f.write("\n".join(body) + "\n")
+    print(f"transcribed {len(lessons)} lessons against {len(S.demand)} demanded "
+          f"hours -> {args.out}", file=sys.stderr)
 
 
 if __name__ == "__main__":
