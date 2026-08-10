@@ -1,0 +1,145 @@
+; timetable.lib.pol — the VOCABULARY of a school week, and the school's own
+; words for the things it wants to say about a timetable.
+;
+; THE DIVISION OF LABOUR THIS FILE EXISTS TO KEEP. A CP-SAT solver decides the
+; timetable; `pol` audits it. For that audit to be worth anything, the auditor
+; must not be reading the solver's homework: nothing here is generated, and
+; nothing here knows how the schedule was arrived at. The generated `timetable.pol`
+; carries the DATA — the curriculum transcribed, and the lessons the solver
+; placed — and this file plus `timetable.claims` carry the JUDGEMENT.
+;
+; A library may hold a schema, an instance and forms, but never `use`,
+; `initial` or a bare transition (§7), so the two silences at the bottom are
+; wrapped in forms, which the generated model invokes by name.
+;
+; EVERY ARROW HERE IS `fixed`, and that is the whole reason this scales. A
+; decided timetable has nothing left to vary, so the state space is ONE state:
+; `pol check` spends its time evaluating the questions, not enumerating
+; situations. Cost grows with the number of lessons, not exponentially in it.
+
+(load "stdlib.pol")
+
+(schema school
+
+  ; ── the week ───────────────────────────────────────────────────────────────
+  (type day-t)                                  ; mon … fri, from the instance
+  (type period-t)                               ; p1 … p6, from the instance
+  (type slot
+    (arrow next   (to slot)     fixed vacatable)  ; the next period of the week
+    (arrow day    (to day-t)    fixed)
+    (arrow period (to period-t) fixed))
+
+  ; ── the estate ─────────────────────────────────────────────────────────────
+  (type facility (plain computers gym))
+  ; Capacity as a SMALL NAMED SCALE (Appendix G's escape clause): the distinct
+  ; seat counts of the estate, smallest first, walked by `bigger`. There is no
+  ; arithmetic here and none is wanted — "does this group fit" is a walk of at
+  ; most four steps, spelled out in `fits` below.
+  (type size-t (arrow bigger (to size-t) fixed vacatable))
+  (type room
+    (arrow provides (to facility) fixed)
+    (arrow holds    (to size-t)   fixed))
+
+  ; ── people, and what they may teach ────────────────────────────────────────
+  (type teacher)
+  (type subject (arrow needs (to facility) fixed))
+  (type group   (arrow size  (to size-t)   fixed))
+
+  ; A junction per (teacher, subject) the curriculum licenses …
+  (type qualification
+    (arrow q-teacher (to teacher) fixed)
+    (arrow q-subj    (to subject) fixed))
+  ; … and one per (teacher, period) it withholds.
+  (type blackout
+    (arrow x-teacher (to teacher) fixed)
+    (arrow x-slot    (to slot)    fixed))
+
+  ; ── counting, without numbers ──────────────────────────────────────────────
+  ; "five hours of maths a week" is five ENTITIES, not the numeral 5. `ordinal`
+  ; tells the five apart: the first hour, the second, and so on.
+  (type ordinal)
+
+  ; ── the CURRICULUM: one entity per hour the programme demands ──────────────
+  (type demand
+    (arrow d-group (to group)   fixed)
+    (arrow d-subj  (to subject) fixed)
+    (arrow d-nth   (to ordinal) fixed))
+
+  ; ── the TIMETABLE: one entity per lesson the solver placed ─────────────────
+  ; `b-id` is identity and nothing else. A `some`-binder may root a chain but
+  ; may never sit on the right of `is`, so "two DIFFERENT bookings" cannot be
+  ; said of the binders themselves — it is said of a slot they carry.
+  (type id-t)
+  (type booking
+    (arrow b-group   (to group)   fixed)
+    (arrow b-subj    (to subject) fixed)
+    (arrow b-teacher (to teacher) fixed)
+    (arrow b-room    (to room)    fixed)
+    (arrow b-slot    (to slot)    fixed)
+    (arrow b-nth     (to ordinal) fixed)   ; which hour of that subject it is
+    (arrow b-id      (to id-t)    fixed)))
+
+; ── the school's own words ───────────────────────────────────────────────────
+
+(form (other A B)   (differ A.b-id B.b-id))        ; two lessons, not one twice
+(form (at-once A B) (is A.b-slot B.b-slot))        ; in the same period
+(form (same-day A B) (is A.b-slot.day B.b-slot.day))
+
+; Lesson B is the hour demand D asks for: same group, same subject, same
+; ordinal. `curriculum-delivered` and `nothing-extra` between them make this a
+; bijection, which is how the hours are counted without counting.
+(form (delivers B D)
+  (and (is B.b-group D.d-group) (is B.b-subj D.d-subj) (is B.b-nth D.d-nth)))
+
+; Room R seats group G: R's capacity class is G's, or any class above it. Four
+; disjuncts because the estate has four distinct capacities — `to_pol.py`
+; refuses to generate an instance with more, rather than letting this silently
+; under-check.
+(form (fits R G)
+  (or (is R.holds G.size)
+      (is R.holds G.size.bigger)
+      (is R.holds G.size.bigger.bigger)
+      (is R.holds G.size.bigger.bigger.bigger)))
+
+; A lesson for group G sits in the period right after A's — ON THE SAME DAY.
+; `next` walks the whole week, so the last period of Monday is followed by the
+; first of Tuesday; without the day conjunct "straight after" would span a
+; night. (The audit found that one the hard way: the solver and the checker
+; disagreed about a Friday-to-Monday pair, and the checker was wrong.)
+(form (follows B A)
+  (and (is B.b-group A.b-group)
+       (is B.b-slot A.b-slot.next)
+       (is B.b-slot.day A.b-slot.day)))
+
+; ── WHERE THE CURRICULUM RUNS OUT ────────────────────────────────────────────
+;
+; These are not violations. They are the questions the curriculum never
+; answered, and which the solver therefore settled by accident. `gap` is how a
+; Pol model says "the rules are silent here" instead of inventing an answer,
+; and `pol check` reports each one with the shortest route to it.
+
+; The binders are SLOTS, not names chosen here: a form template's list head
+; must be a slot (§10.2), so `(some (A booking) …)` is how a form quantifies at
+; all. The generated model supplies three ordinary names when it invokes them.
+
+(form (silence-windows A B C)
+  (transition window-unstated
+    (when (some (A booking)
+            (some (B booking)
+              (and (is A.b-group B.b-group)
+                   (same-day A B)
+                   (is B.b-slot A.b-slot.next.next)
+                   (not (some (C booking)
+                          (and (is C.b-group A.b-group)
+                               (is C.b-slot A.b-slot.next))))))))
+    (do (gap "the curriculum is silent: may a group have a free period BETWEEN two lessons, and who supervises it?"))))
+
+(form (silence-doubling A B)
+  (transition doubling-unstated
+    (when (some (A booking)
+            (some (B booking)
+              (and (other A B)
+                   (is A.b-group B.b-group)
+                   (is A.b-subj B.b-subj)
+                   (same-day A B)))))
+    (do (gap "the curriculum is silent: may two hours of one subject fall on the same day?"))))

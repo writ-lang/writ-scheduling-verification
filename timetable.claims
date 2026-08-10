@@ -1,0 +1,114 @@
+; timetable.claims — what the school asks of ANY timetable.
+;
+; A questions document, not a model (§3): it is hand-written, it is stable
+; across terms, and the thing it interrogates — `build/timetable.pol` — is
+; produced by a solver that has never seen this file. That is what makes an
+; answer here worth having. Point it at next year's schedule unchanged.
+;
+; Three sections, and the middle one is the interesting one:
+;
+;   I.   DOES IT DELIVER THE CURRICULUM — every hour owed, no hour invented.
+;   II.  IS IT PHYSICALLY POSSIBLE — nobody and nothing in two places at once.
+;   III. IS IT A TIMETABLE A SCHOOL WOULD ACCEPT — the rules everyone knows and
+;        nobody wrote into the solver.
+;
+; I and II restate, independently, what the CP model was told; they should hold,
+; and if they ever fail the two halves disagree and one of them is wrong. III
+; was never told to the solver at all, and that is where the findings are.
+
+(load "stdlib.pol")
+(load "timetable.lib.pol")
+
+; ── I. the curriculum, delivered ─────────────────────────────────────────────
+;
+; Together these three make lesson↔demand a bijection, which counts the hours
+; without counting: none missing, none extra, none claimed twice.
+
+(property curriculum-delivered "every hour the programme demands is on the timetable"
+  (never (some (d demand) (not (some (b booking) (delivers b d))))))
+
+(property nothing-extra "no lesson is taught that the programme never asked for"
+  (never (some (b booking) (not (some (d demand) (delivers b d))))))
+
+(property hours-not-doubled "no two lessons claim to be the same hour of the same subject"
+  (never (some (a booking)
+           (some (b booking)
+             (and (other a b)
+                  (is a.b-group b.b-group)
+                  (is a.b-subj  b.b-subj)
+                  (is a.b-nth   b.b-nth))))))
+
+; ── II. physically possible ──────────────────────────────────────────────────
+
+(property no-group-clash "no group is in two rooms at once"
+  (never (some (a booking) (some (b booking)
+    (and (other a b) (at-once a b) (is a.b-group b.b-group))))))
+
+(property no-teacher-clash "no teacher is in two rooms at once"
+  (never (some (a booking) (some (b booking)
+    (and (other a b) (at-once a b) (is a.b-teacher b.b-teacher))))))
+
+(property no-room-clash "no room holds two lessons at once"
+  (never (some (a booking) (some (b booking)
+    (and (other a b) (at-once a b) (is a.b-room b.b-room))))))
+
+(property room-fit "every lesson is in a room of the kind its subject demands"
+  (never (some (b booking) (not (is b.b-room.provides b.b-subj.needs)))))
+
+(property room-big-enough "no group is put in a room too small to seat it"
+  (never (some (b booking) (not (fits b.b-room b.b-group)))))
+
+(property teacher-qualified "nobody is timetabled to teach a subject they are not qualified in"
+  (never (some (b booking)
+           (not (some (q qualification)
+                  (and (is q.q-teacher b.b-teacher) (is q.q-subj b.b-subj)))))))
+
+(property teacher-available "nobody is timetabled in a period they are not available"
+  (never (some (b booking)
+           (some (x blackout)
+             (and (is x.x-teacher b.b-teacher) (is x.x-slot b.b-slot))))))
+
+; ── III. the rules nobody wrote into the solver ──────────────────────────────
+;
+; Each of these is a sentence any teacher would say out loud and nobody thinks
+; to encode. They are the reason this file exists.
+
+(property no-triple-run "no group sits three hours of one subject back to back"
+  (never (some (a booking) (some (b booking) (some (c booking)
+    (and (is a.b-group b.b-group) (is a.b-group c.b-group)
+         (is a.b-subj  b.b-subj)  (is a.b-subj  c.b-subj)
+         (same-day a c)
+         (is b.b-slot a.b-slot.next)
+         (is c.b-slot a.b-slot.next.next)))))))
+
+(property sport-not-first "no group starts a day with sport"
+  (never (some (b booking) (and (is b.b-subj sport) (is b.b-slot.period p1)))))
+
+(property time-to-change-after-sport "no group is sent from sport straight into another lesson"
+  (never (some (a booking) (some (b booking)
+    (and (is a.b-subj sport) (follows b a))))))
+
+; ── naming the offenders ─────────────────────────────────────────────────────
+;
+; A failing property says THAT the timetable is wrong; a query says WHICH
+; lessons make it wrong. Read them with `pol query timetable.pol NAME`
+; — `pol check` prints them too.
+
+(query clashes (where (a booking) (b booking))
+  (and (other a b) (at-once a b)
+       (or (is a.b-room b.b-room) (is a.b-group b.b-group) (is a.b-teacher b.b-teacher))))
+
+(query missing-hours (where (d demand))
+  (not (some (b booking) (delivers b d))))
+
+(query unqualified (where (b booking))
+  (not (some (q qualification)
+         (and (is q.q-teacher b.b-teacher) (is q.q-subj b.b-subj)))))
+
+(query triple-runs (where (a booking))
+  (some (b booking) (some (c booking)
+    (and (is a.b-group b.b-group) (is a.b-group c.b-group)
+         (is a.b-subj  b.b-subj)  (is a.b-subj  c.b-subj)
+         (same-day a c)
+         (is b.b-slot a.b-slot.next)
+         (is c.b-slot a.b-slot.next.next)))))

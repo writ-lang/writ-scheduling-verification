@@ -1,0 +1,49 @@
+# Each act as a service, over one image that carries CP-SAT and `pol`.
+#
+#   in a pol checkout:   make image           # tags pol:latest, once
+#   here:                docker compose up    # all three acts, in order
+#                        docker compose run --rm audit    # just one of them
+#
+# The three single-act services sit behind the `act` profile so that plain `up`
+# runs the pipeline once rather than four times; `run` enables the profile by
+# itself.
+#
+# A service exits 0 iff the act behaved as it should — which for `audit` and
+# `tamper` means `pol check` DID have findings, and for `strict` means it had
+# none. So `up` is a pass/fail run of the whole pipeline and needs nothing on
+# the host but Docker.
+#
+# `build/` is mounted so the schedules, the generated model and the three
+# reports survive the container and can be read on the host.
+
+services:
+  # Solve the curriculum as specified, then audit the result.
+  audit:
+    build: .
+    image: pol-scheduling-verification
+    command: ["audit"]
+    profiles: ["act"]
+    volumes: ["./build:/timetable/build"]
+
+  # Damage that schedule three ways; the audit names each defect.
+  tamper:
+    build: .
+    image: pol-scheduling-verification
+    command: ["tamper"]
+    profiles: ["act"]
+    volumes: ["./build:/timetable/build"]
+
+  # Solve again with the audit's findings encoded; the audit comes back clean.
+  strict:
+    build: .
+    image: pol-scheduling-verification
+    command: ["strict"]
+    profiles: ["act"]
+    volumes: ["./build:/timetable/build"]
+
+  # All three, in order.
+  all:
+    build: .
+    image: pol-scheduling-verification
+    command: ["all"]
+    volumes: ["./build:/timetable/build"]

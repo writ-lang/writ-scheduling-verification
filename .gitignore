@@ -1,0 +1,4 @@
+build/
+timetable.pol
+__pycache__/
+*.pyc

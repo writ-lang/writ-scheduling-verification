@@ -1,0 +1,54 @@
+# The CURRICULUM — the one authoritative statement of what the school owes its
+# pupils, and of the estate and staff available to deliver it.
+#
+# This file is the input to BOTH halves of the pipeline and the only thing they
+# share: `solve.py` turns it into a CP-SAT model and produces a timetable;
+# `to_pol.py` transcribes it, beside that timetable, into a Pol instance which
+# `timetable.claims` then interrogates. Nothing else crosses between them — the
+# checker never sees the solver's model, which is the point of the exercise.
+
+week:
+  days: [mon, tue, wed, thu, fri]
+  periods: [p1, p2, p3, p4, p5, p6]
+
+# What a room offers, and how many it seats. `facility` is what a subject can
+# demand of it; `seats` becomes a small named scale (Pol has no arithmetic, so
+# capacities are compared as a ladder of classes, not as numbers).
+rooms:
+  lab-1: {facility: computers, seats: 30}
+  lab-2: {facility: computers, seats: 24}
+  gym-hall: {facility: gym,   seats: 60}
+  r-101: {facility: plain,     seats: 30}
+  r-102: {facility: plain,     seats: 28}
+  r-103: {facility: plain,     seats: 24}
+
+subjects:
+  math:    {needs: computers}
+  physics: {needs: computers}
+  lit:     {needs: plain}
+  hist:    {needs: plain}
+  sport:   {needs: gym}
+  art:     {needs: plain}
+
+teachers:
+  t-petrova:  {teaches: [math]}
+  t-orlov:    {teaches: [math]}
+  t-ivanov:   {teaches: [physics], unavailable: [mon-p1]}
+  t-koval:    {teaches: [lit]}
+  t-mel:      {teaches: [lit, art]}
+  t-sokolov:  {teaches: [hist]}
+  t-sidorov:  {teaches: [sport], unavailable: [fri-p5, fri-p6]}
+  t-belova:   {teaches: [art]}
+
+groups:
+  g-7a: {size: 28}
+  g-7b: {size: 24}
+  g-8a: {size: 30}
+
+# The PROGRAMME: contact hours per week, per group, per subject. This is the
+# thing the timetable must deliver exactly — no fewer (a hole in the pupils'
+# education) and no more (a lesson nobody asked for).
+programme:
+  g-7a: {math: 5, physics: 3, lit: 4, hist: 3, sport: 3, art: 2}
+  g-7b: {math: 5, physics: 3, lit: 4, hist: 3, sport: 3, art: 2}
+  g-8a: {math: 5, physics: 3, lit: 4, hist: 3, sport: 3, art: 2}
