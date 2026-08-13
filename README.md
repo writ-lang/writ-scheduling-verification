@@ -1,5 +1,7 @@
 # A school timetable, made by one tool and judged by another
 
+<img src="docs/images/writ-mark-200.png" alt="writ" width="120" align="left" hspace="16" vspace="4">
+
 This is a small, complete, runnable example of an idea that generalises well
 beyond schools: **let one program produce the answer and a different program,
 which has never seen how it was produced, decide whether the answer is
