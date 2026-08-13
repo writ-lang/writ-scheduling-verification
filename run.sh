@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (C) 2026 Alex Kunich
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # The whole pipeline, in three acts. Each act asserts what it expects, so this
 # script is a test of the audit and not merely a demonstration of it.
 #
