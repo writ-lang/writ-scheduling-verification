@@ -1,7 +1,7 @@
 ; timetable.claims — what the school asks of ANY timetable.
 ;
 ; A questions document, not a model (§3): it is hand-written, it is stable
-; across terms, and the thing it interrogates — `build/timetable.pol` — is
+; across terms, and the thing it interrogates — `build/timetable.writ` — is
 ; produced by a solver that has never seen this file. That is what makes an
 ; answer here worth having. Point it at next year's schedule unchanged.
 ;
@@ -16,8 +16,8 @@
 ; and if they ever fail the two halves disagree and one of them is wrong. III
 ; was never told to the solver at all, and that is where the findings are.
 
-(load "stdlib.pol")
-(load "timetable.lib.pol")
+(load "stdlib.writ")
+(load "timetable.lib.writ")
 
 ; ── I. the curriculum, delivered ─────────────────────────────────────────────
 ;
@@ -91,8 +91,8 @@
 ; ── naming the offenders ─────────────────────────────────────────────────────
 ;
 ; A failing property says THAT the timetable is wrong; a query says WHICH
-; lessons make it wrong. Read them with `pol query timetable.pol NAME`
-; — `pol check` prints them too.
+; lessons make it wrong. Read them with `writ query timetable.writ NAME`
+; — `writ check` prints them too.
 
 (query clashes (where (a booking) (b booking))
   (and (other a b) (at-once a b)

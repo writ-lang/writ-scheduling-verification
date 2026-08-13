@@ -56,13 +56,13 @@ variables the solver turns on. It takes about a second.
 What CP-SAT cannot do is tell you what you forgot to ask it. It answers the
 question it was given, exactly and only.
 
-### pol — the judge
+### writ — the judge
 
-[pol](https://github.com/sajonaro/pol) is a small language for writing a domain
+[writ](https://github.com/sajonaro/writ) is a small language for writing a domain
 down and a tool that answers questions about it. A model has three parts: a
 **schema** (what kinds of thing exist and how they point at each other), an
 **instance** (one filling-in of that schema — the actual rooms, teachers and
-lessons), and **transitions** (moves that may happen). `pol` builds every
+lessons), and **transitions** (moves that may happen). `writ` builds every
 situation the model allows and answers your questions by exhaustion, showing its
 evidence.
 
@@ -78,8 +78,8 @@ Four kinds of answer appear in this repository:
 | — | exit `0` / `1` | `1` means *there is a finding to report*, which is a verdict, not a crash |
 
 `gap` is the unusual one and the most useful here. Where an ordinary checker
-must either accept or reject, a Pol model can say *the curriculum does not
-answer this*, and `pol` reports it as a hole with the route to it.
+must either accept or reject, a Writ model can say *the curriculum does not
+answer this*, and `writ` reports it as a hole with the route to it.
 
 ## The idea
 
@@ -92,9 +92,9 @@ confirm them.
 ```
 curriculum.yaml ──► solve.py (CP-SAT) ──► schedule.json   "here is a timetable"
        │                                       │
-       └──────────► to_pol.py ◄────────────────┘          transcribe both into
-                        │                                  one Pol instance
-                  timetable.pol ──► pol check --claims timetable.claims
+       └──────────► to_writ.py ◄────────────────┘          transcribe both into
+                        │                                  one Writ instance
+                  timetable.writ ──► writ check --claims timetable.claims
                                           │
                                     holds / fails / gaps / named offenders
 ```
@@ -104,13 +104,13 @@ curriculum.yaml ──► solve.py (CP-SAT) ──► schedule.json   "here is a
 With Docker, nothing else installed:
 
 ```console
-$ cd ../pol && make image          # builds the pol engine image, once
-$ cd ../pol-scheduling-verification
+$ cd ../writ && make image          # builds the writ engine image, once
+$ cd ../writ-scheduling-verification
 $ docker compose up                # all three acts
 $ docker compose run --rm audit    # or just one of them
 ```
 
-Or natively, given `pol`, Python, `ortools` and `pyyaml`:
+Or natively, given `writ`, Python, `ortools` and `pyyaml`:
 
 ```console
 $ ./run.sh all
@@ -118,7 +118,7 @@ $ ./run.sh all
 
 [run.sh](run.sh) asserts what each act should produce — twelve assertions — so
 it is a test of the audit rather than a demonstration of it, and exits 0 only if
-every one holds. Remember that `pol check` exits **1 when it has a finding**:
+every one holds. Remember that `writ check` exits **1 when it has a finding**:
 acts 1 and 2 expect 1, act 3 expects 0.
 
 ## What happens, in three acts
@@ -174,7 +174,7 @@ fails  teacher-qualified      missing-hours:  d = owed-g-7b-math-5
 ```
 
 A failing property says *that* the timetable is wrong; the queries beside it say
-*which lessons* make it wrong. `pol query timetable.pol clashes` asks one on its
+*which lessons* make it wrong. `writ query timetable.writ clashes` asks one on its
 own.
 
 ### Act 3 — solved again, with the findings encoded
@@ -184,7 +184,7 @@ reports `gaps: none`, every property holds, exit 0. That is the loop the
 arrangement exists to close: **audit, tighten the model, re-audit** — with the
 questions the fixed point and the solver the thing that changes.
 
-## What `pol` is asked
+## What `writ` is asked
 
 All of it is in [timetable.claims](timetable.claims), hand-written and stable
 across terms — point it at next year's schedule unchanged.
@@ -199,7 +199,7 @@ across terms — point it at next year's schedule unchanged.
 
 ### Counting hours when the language has no numbers
 
-Pol deliberately has no arithmetic — that is what lets it answer *never*
+Writ deliberately has no arithmetic — that is what lets it answer *never*
 questions by exhaustive census rather than by search. So "five hours of maths a
 week" cannot be the numeral 5. It is **five `demand` entities**, told apart by
 an ordinal (first hour, second hour…), and each lesson carries the ordinal of
@@ -217,8 +217,8 @@ rather than a comparison.
 ### The trust boundary
 
 An audit is only as good as what it refuses to take on faith.
-[to_pol.py](to_pol.py) is a transcriber, not a checker: it copies the curriculum
-and the schedule into a Pol instance and **decides exactly one thing** — each
+[to_writ.py](to_writ.py) is a transcriber, not a checker: it copies the curriculum
+and the schedule into a Writ instance and **decides exactly one thing** — each
 lesson's ordinal, by position in the week. Even that is checked rather than
 trusted, since a miscounting transcriber breaks the bijection above and the file
 it is feeding says so. What remains on faith is that `curriculum.yaml` was
@@ -227,11 +227,11 @@ transcribed faithfully — and the transcriber is short enough to read.
 ## What it costs
 
 Every arrow in the schema is *fixed*: a decided timetable has nothing left to
-vary. Pol builds its situations as the product of everything that *can* vary, so
+vary. Writ builds its situations as the product of everything that *can* vary, so
 that product is empty and there is exactly **one situation**. The tool spends
 its whole run evaluating questions rather than exploring:
 
-| lessons | CP-SAT | `pol check` | situations |
+| lessons | CP-SAT | `writ check` | situations |
 |---|---|---|---|
 | 60 (3 groups, 5 days) | 0.9 s | 0.26 s | 1 |
 | 240 (12 groups, 5 days) | 29 s | 6.0 s | 1 |
@@ -240,7 +240,7 @@ The cost is in the questions, not in search: `no-triple-run` compares three
 lessons at once, so it is cubic in the number of lessons and accounts for most
 of those 6 seconds. Everything else is quadratic or linear.
 
-Worth knowing about the other direction too. Asking Pol to *generate* the
+Worth knowing about the other direction too. Asking Writ to *generate* the
 timetable — moves that place lessons one at a time, and a question asking
 whether a full week is reachable — hits the engine's 200 000-situation ceiling
 at about fifteen lesson-hours, because the set of hours still owed is genuinely
@@ -254,18 +254,18 @@ CP-SAT; **judging** one is a decision problem, and that is what is here.
 | [curriculum.yaml](curriculum.yaml) | what must be taught, by whom, where — the only shared input |
 | [school.py](school.py) | the curriculum read once: the week, the hours, who may go where |
 | [solve.py](solve.py) | CP-SAT, the maker. `--strict` adds what the audit found |
-| [to_pol.py](to_pol.py) | the transcriber: curriculum + schedule → a Pol instance |
-| [timetable.lib.pol](timetable.lib.pol) | the vocabulary of a school week, and the two places the curriculum runs out |
+| [to_writ.py](to_writ.py) | the transcriber: curriculum + schedule → a Writ instance |
+| [timetable.lib.writ](timetable.lib.writ) | the vocabulary of a school week, and the two places the curriculum runs out |
 | [timetable.claims](timetable.claims) | the questions — hand-written, term after term |
 | [tamper.py](tamper.py) | three realistic defects, so the audit can be seen to bite |
 | [show.py](show.py) | a schedule as a readable grid |
 | [run.sh](run.sh) | the three acts, each asserting what it expects |
 
-`timetable.pol` is generated beside the claims file and is not checked in: `pol`
+`timetable.writ` is generated beside the claims file and is not checked in: `writ`
 resolves a `--claims` file, and every `(load …)` inside it, against the model's
-own directory — and `pol query timetable.pol NAME` finds `timetable.claims` by
+own directory — and `writ query timetable.writ NAME` finds `timetable.claims` by
 that same sibling rule.
 
 A frozen, solver-free version of this audit lives as the `timetable/` scenario
-in [pol-problems](https://github.com/sajonaro/pol-problems), where the schedule
+in [writ-problems](https://github.com/sajonaro/writ-problems), where the schedule
 is committed as a fixture so the verdicts can be asserted exactly.

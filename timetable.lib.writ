@@ -1,10 +1,10 @@
-; timetable.lib.pol — the VOCABULARY of a school week, and the school's own
+; timetable.lib.writ — the VOCABULARY of a school week, and the school's own
 ; words for the things it wants to say about a timetable.
 ;
 ; THE DIVISION OF LABOUR THIS FILE EXISTS TO KEEP. A CP-SAT solver decides the
-; timetable; `pol` audits it. For that audit to be worth anything, the auditor
+; timetable; `writ` audits it. For that audit to be worth anything, the auditor
 ; must not be reading the solver's homework: nothing here is generated, and
-; nothing here knows how the schedule was arrived at. The generated `timetable.pol`
+; nothing here knows how the schedule was arrived at. The generated `timetable.writ`
 ; carries the DATA — the curriculum transcribed, and the lessons the solver
 ; placed — and this file plus `timetable.claims` carry the JUDGEMENT.
 ;
@@ -14,10 +14,10 @@
 ;
 ; EVERY ARROW HERE IS `fixed`, and that is the whole reason this scales. A
 ; decided timetable has nothing left to vary, so the state space is ONE state:
-; `pol check` spends its time evaluating the questions, not enumerating
+; `writ check` spends its time evaluating the questions, not enumerating
 ; situations. Cost grows with the number of lessons, not exponentially in it.
 
-(load "stdlib.pol")
+(load "stdlib.writ")
 
 (schema school
 
@@ -92,7 +92,7 @@
   (and (is B.b-group D.d-group) (is B.b-subj D.d-subj) (is B.b-nth D.d-nth)))
 
 ; Room R seats group G: R's capacity class is G's, or any class above it. Four
-; disjuncts because the estate has four distinct capacities — `to_pol.py`
+; disjuncts because the estate has four distinct capacities — `to_writ.py`
 ; refuses to generate an instance with more, rather than letting this silently
 ; under-check.
 (form (fits R G)
@@ -115,8 +115,8 @@
 ;
 ; These are not violations. They are the questions the curriculum never
 ; answered, and which the solver therefore settled by accident. `gap` is how a
-; Pol model says "the rules are silent here" instead of inventing an answer,
-; and `pol check` reports each one with the shortest route to it.
+; Writ model says "the rules are silent here" instead of inventing an answer,
+; and `writ check` reports each one with the shortest route to it.
 
 ; The binders are SLOTS, not names chosen here: a form template's list head
 ; must be a slot (§10.2), so `(some (A booking) …)` is how a form quantifies at

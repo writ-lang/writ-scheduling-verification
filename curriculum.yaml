@@ -3,7 +3,7 @@
 #
 # This file is the input to BOTH halves of the pipeline and the only thing they
 # share: `solve.py` turns it into a CP-SAT model and produces a timetable;
-# `to_pol.py` transcribes it, beside that timetable, into a Pol instance which
+# `to_writ.py` transcribes it, beside that timetable, into a Writ instance which
 # `timetable.claims` then interrogates. Nothing else crosses between them — the
 # checker never sees the solver's model, which is the point of the exercise.
 
@@ -12,7 +12,7 @@ week:
   periods: [p1, p2, p3, p4, p5, p6]
 
 # What a room offers, and how many it seats. `facility` is what a subject can
-# demand of it; `seats` becomes a small named scale (Pol has no arithmetic, so
+# demand of it; `seats` becomes a small named scale (Writ has no arithmetic, so
 # capacities are compared as a ladder of classes, not as numbers).
 rooms:
   lab-1: {facility: computers, seats: 30}

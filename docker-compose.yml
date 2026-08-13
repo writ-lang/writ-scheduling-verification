@@ -1,6 +1,6 @@
-# Each act as a service, over one image that carries CP-SAT and `pol`.
+# Each act as a service, over one image that carries CP-SAT and `writ`.
 #
-#   in a pol checkout:   make image           # tags pol:latest, once
+#   in a writ checkout:   make image           # tags writ:latest, once
 #   here:                docker compose up    # all three acts, in order
 #                        docker compose run --rm audit    # just one of them
 #
@@ -9,7 +9,7 @@
 # itself.
 #
 # A service exits 0 iff the act behaved as it should — which for `audit` and
-# `tamper` means `pol check` DID have findings, and for `strict` means it had
+# `tamper` means `writ check` DID have findings, and for `strict` means it had
 # none. So `up` is a pass/fail run of the whole pipeline and needs nothing on
 # the host but Docker.
 #
@@ -20,7 +20,7 @@ services:
   # Solve the curriculum as specified, then audit the result.
   audit:
     build: .
-    image: pol-scheduling-verification
+    image: writ-scheduling-verification
     command: ["audit"]
     profiles: ["act"]
     volumes: ["./build:/timetable/build"]
@@ -28,7 +28,7 @@ services:
   # Damage that schedule three ways; the audit names each defect.
   tamper:
     build: .
-    image: pol-scheduling-verification
+    image: writ-scheduling-verification
     command: ["tamper"]
     profiles: ["act"]
     volumes: ["./build:/timetable/build"]
@@ -36,7 +36,7 @@ services:
   # Solve again with the audit's findings encoded; the audit comes back clean.
   strict:
     build: .
-    image: pol-scheduling-verification
+    image: writ-scheduling-verification
     command: ["strict"]
     profiles: ["act"]
     volumes: ["./build:/timetable/build"]
@@ -44,6 +44,6 @@ services:
   # All three, in order.
   all:
     build: .
-    image: pol-scheduling-verification
+    image: writ-scheduling-verification
     command: ["all"]
     volumes: ["./build:/timetable/build"]

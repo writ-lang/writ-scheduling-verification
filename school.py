@@ -22,7 +22,7 @@ def bucket(pairs):
 class Hour:
     """One contact hour the programme demands: 'the 3rd maths hour of 7a'.
 
-    Pol has no numbers, so an hour has to be a THING before it can be counted;
+    Writ has no numbers, so an hour has to be a THING before it can be counted;
     keeping it a thing on this side too means the two halves agree about what
     is being delivered.
     """

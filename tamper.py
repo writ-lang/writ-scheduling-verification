@@ -4,7 +4,7 @@
 A checker that only ever says "holds" has proved nothing about itself. Each
 defect here is one a real pipeline produces — a botched manual edit, a lesson
 lost in an export, a cover teacher dropped in without checking the syllabus —
-and each should come back from `pol check` named, not merely counted.
+and each should come back from `writ check` named, not merely counted.
 
     ./tamper.py schedule.json -o schedule.tampered.json [--defect clash …]
 """

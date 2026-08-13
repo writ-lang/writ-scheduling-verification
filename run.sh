@@ -9,12 +9,12 @@
 #   ./run.sh strict   solve with the findings encoded -> check    (clean)
 #   ./run.sh all      all three; exits 0 only if every act behaved as expected
 #
-# `pol check` exits 1 when it HAS A FINDING, which is a verdict and not an
+# `writ check` exits 1 when it HAS A FINDING, which is a verdict and not an
 # error — so acts 1 and 2 expect 1, and act 3 expects 0.
 set -uo pipefail
 cd "$(dirname "$0")"
 
-POL=${POL:-pol}
+WRIT=${WRIT:-writ}
 PY=${PY:-python3}
 # Outputs go to build/. Under `docker compose` that may be a bind mount the
 # container's user cannot write to; fall back rather than fail the run.
@@ -35,13 +35,13 @@ says() { grep -qE "$1" "$2" && ok "$3" || bad "$3 — no '$1' in the report"; }
 silent() { grep -qE "$1" "$2" && bad "$3 — found '$1'" || ok "$3"; }
 
 check() {  # check SCHEDULE REPORT
-  # The model is generated BESIDE the claims and the library: `pol` resolves a
+  # The model is generated BESIDE the claims and the library: `writ` resolves a
   # --claims file, and every (load …) inside it, against the model's own
-  # directory — and `pol query timetable.pol NAME` finds timetable.claims by
+  # directory — and `writ query timetable.writ NAME` finds timetable.claims by
   # that same sibling rule.
-  $PY ./to_pol.py "$1" -o timetable.pol || exit 2
-  cp timetable.pol "$B/$(basename "${2%.txt}").pol"
-  $POL check timetable.pol --claims timetable.claims > "$2" 2>&1
+  $PY ./to_writ.py "$1" -o timetable.writ || exit 2
+  cp timetable.writ "$B/$(basename "${2%.txt}").writ"
+  $WRIT check timetable.writ --claims timetable.claims > "$2" 2>&1
   local rc=$?
   cat "$2"
   return $rc
@@ -54,7 +54,7 @@ act_audit() {
   $PY ./solve.py --out $B/schedule.json || exit 2
   $PY ./show.py $B/schedule.json --group g-7a     # what the solver produced
   check $B/schedule.json $B/audit.txt; rc=$?
-  expect_exit 1 $rc "pol has findings to report"
+  expect_exit 1 $rc "writ has findings to report"
   silent "$CONFORMANCE" $B/audit.txt \
     "the solver delivers the curriculum and nothing collides — both halves agree"
   says 'fails +(no-triple-run|sport-not-first|time-to-change-after-sport)' $B/audit.txt \
@@ -67,7 +67,7 @@ act_tamper() {
   head "ACT 2 — the same timetable, damaged in three ways"
   $PY ./tamper.py $B/schedule.json --out $B/schedule.tampered.json || exit 2
   check $B/schedule.tampered.json $B/tamper.txt; rc=$?
-  expect_exit 1 $rc "pol has findings to report"
+  expect_exit 1 $rc "writ has findings to report"
   says 'fails +no-room-clash'          $B/tamper.txt "the double-booking is caught"
   says 'fails +curriculum-delivered'   $B/tamper.txt "the lost hour is caught"
   says 'fails +teacher-qualified'      $B/tamper.txt "the unqualified cover is caught"
