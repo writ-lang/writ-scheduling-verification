@@ -2,3 +2,8 @@ build/
 timetable.writ
 __pycache__/
 *.pyc
+
+# writ check writes MODEL.cert.json beside every model it checks: the answers
+# plus the model they are about, for a second checker (writ's
+# docs/certificates.md). Regenerated on every run, so never kept.
+*.cert.json
